@@ -1,0 +1,10 @@
+pandas
+numpy
+scikit-learn
+matplotlib
+seaborn
+ipykernel
+catboost
+lightgbm
+category-encoders
+geohash2
