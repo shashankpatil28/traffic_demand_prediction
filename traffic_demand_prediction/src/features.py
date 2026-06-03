@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 
 from .config import ID_COL, LANE_COL, TARGET_COL
+from .statistical_baseline import build_statistical_baseline_features
 
 
 BASE_CATEGORICAL_COLUMNS = [
@@ -257,6 +258,8 @@ def _clean_missing_values(df: pd.DataFrame) -> pd.DataFrame:
 def build_features(
     train: pd.DataFrame,
     test: pd.DataFrame,
+    use_target_stats: bool = True,
+    use_day_shift: bool = True,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series, list[str], list[str]]:
     print("\nBuilding features...")
     original_train_rows = len(train)
@@ -277,10 +280,12 @@ def build_features(
     combined = _add_geohash_features(combined)
     combined = _add_interaction_features(combined)
     combined = _add_frequency_features(combined)
-    combined = _add_target_aggregation_features(combined, train_mask)
-    combined = _add_previous_day_features(combined, train_mask)
-    combined = _add_day_shift_features(combined, train_mask)
-    combined = _add_statistical_baseline(combined, train_mask)
+    if use_target_stats:
+        combined = _add_target_aggregation_features(combined, train_mask)
+        combined = _add_previous_day_features(combined, train_mask)
+        if use_day_shift:
+            combined = _add_day_shift_features(combined, train_mask)
+        combined = _add_statistical_baseline(combined, train_mask)
 
     categorical_cols = [col for col in BASE_CATEGORICAL_COLUMNS if col in combined.columns]
     for col in categorical_cols:
@@ -297,6 +302,12 @@ def build_features(
 
     train_processed = combined.loc[combined["_is_train"].eq(1), feature_cols].reset_index(drop=True)
     test_processed = combined.loc[combined["_is_train"].eq(0), feature_cols].reset_index(drop=True)
+
+    if use_target_stats:
+        baseline_train, baseline_test = build_statistical_baseline_features(train, test)
+        train_processed = pd.concat([train_processed, baseline_train], axis=1)
+        test_processed = pd.concat([test_processed, baseline_test], axis=1)
+        feature_cols = train_processed.columns.tolist()
 
     assert len(train_processed) == original_train_rows
     assert len(test_processed) == original_test_rows

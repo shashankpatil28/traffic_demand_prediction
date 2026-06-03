@@ -1,0 +1,2 @@
+train_rows,fake_observed_rows,fake_validation_rows,validation_start_minute,validation_end_minute,use_target_stats,use_day_shift,blend_baseline,blend_alpha,hour_calibration,r2,rmse,mae
+7115,7115,41851,135,825,True,False,False,,False,0.5587265808956006,0.10272996661512658,0.052181295207372524

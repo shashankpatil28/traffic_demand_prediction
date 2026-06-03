@@ -73,6 +73,7 @@ def train_cv_models(
     output_dir,
     n_splits: int = 5,
     quick: bool = False,
+    iterations: int | None = None,
 ) -> tuple[np.ndarray, np.ndarray, list[float]]:
     print("\nTraining model with cross validation...")
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -102,6 +103,8 @@ def train_cv_models(
             from catboost import CatBoostRegressor
 
             params = QUICK_CATBOOST_PARAMS if quick else CATBOOST_PARAMS
+            if iterations is not None and not quick:
+                params = {**params, "iterations": iterations}
             model = CatBoostRegressor(**params)
             model.fit(
                 X_train,
@@ -158,6 +161,8 @@ def train_cv_models(
 def run_time_holdout_check(
     train: pd.DataFrame,
     quick: bool = True,
+    use_target_stats: bool = True,
+    use_day_shift: bool = True,
 ) -> None:
     print("\nRunning time-aware holdout diagnostic...")
     day_numeric = pd.to_numeric(train["day"], errors="coerce")
@@ -177,6 +182,8 @@ def run_time_holdout_check(
     X_train, X_valid, y_train, _, holdout_categorical_cols = build_features(
         holdout_train,
         holdout_valid_features,
+        use_target_stats=use_target_stats,
+        use_day_shift=use_day_shift,
     )
     y_valid = holdout_valid[TARGET_COL].reset_index(drop=True)
 

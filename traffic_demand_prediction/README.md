@@ -54,6 +54,42 @@ Fast smoke test:
 python main.py --quick
 ```
 
+Current model:
+
+```bash
+python main.py --iterations 1500 --output_path outputs/submission_current.csv
+```
+
+No day-shift calibration:
+
+```bash
+python main.py --iterations 1500 --no_day_shift --output_path outputs/submission_no_day_shift.csv
+```
+
+Baseline blend:
+
+```bash
+python main.py --iterations 1500 --no_day_shift --blend_baseline --blend_alpha 0.65 --output_path outputs/submission_blend_065.csv
+```
+
+Future-window validation:
+
+```bash
+python main.py --run_future_validation --iterations 1500 --no_day_shift --blend_baseline --alpha_search
+```
+
+Experiment runner:
+
+```bash
+python run_experiments.py
+```
+
+Hour-calibrated blend:
+
+```bash
+python main.py --iterations 1500 --no_day_shift --blend_baseline --blend_alpha 0.65 --hour_calibration --output_path outputs/submission_blend_hour_calibrated.csv
+```
+
 Custom paths:
 
 ```bash
@@ -72,6 +108,12 @@ The pipeline writes:
 outputs/submission.csv
 outputs/oof_predictions.csv
 outputs/feature_importance.csv
+outputs/future_window_validation_summary.csv
+outputs/future_window_validation_by_hour.csv
+outputs/future_window_validation_predictions.csv
+outputs/blend_alpha_search.csv
+outputs/experiment_summary.csv
+outputs/hour_calibration_table.csv
 ```
 
 `submission.csv` contains exactly:
@@ -138,7 +180,31 @@ Interaction categorical features:
 
 ## Validation
 
-The training pipeline uses:
+Random KFold is still available, but it is not the main decision signal for this competition.
+
+Why random KFold is misleading:
+
+- The hidden test is a future time window.
+- Train contains day 48 full day and day 49 only from `00:00` to `02:00`.
+- Test contains day 49 from `02:15` to `13:45`.
+- Random KFold mixes similar historical rows across train and validation, which can make target-stat features look much stronger than they are on the platform.
+
+The main local decision signal should be future-window validation.
+
+Future-window validation simulates the platform by holding out a future window from day 48:
+
+```text
+fake observed window: day 48, 00:00 to 02:00
+fake future window:   day 48, 02:15 to 13:45
+```
+
+Run it with:
+
+```bash
+python main.py --run_future_validation --quick --no_day_shift
+```
+
+The regular training pipeline uses:
 
 ```text
 KFold(n_splits=5, shuffle=True, random_state=42)
@@ -149,6 +215,63 @@ For each fold, it prints R2. At the end it prints:
 - mean R2
 - standard deviation R2
 - competition-like score: `max(0, 100 * mean_r2)`
+
+Treat this random KFold score as a fit/debug signal, not as a leaderboard estimate.
+
+## Statistical Baseline
+
+The deterministic baseline predicts demand from previous-day patterns using this fallback family:
+
+- previous day same `geohash + timestamp`
+- previous day same `geohash + hour`
+- previous day same `geohash_6 + timestamp`
+- previous day same `geohash_5 + timestamp`
+- previous day same `geohash`
+- previous day same `timestamp`
+- previous day same `hour`
+- global train mean
+
+The baseline is saved as:
+
+```text
+outputs/statistical_baseline_test.csv
+```
+
+## CatBoost + Baseline Blending
+
+Enable blending with:
+
+```bash
+python main.py --iterations 1500 --no_day_shift --blend_baseline --blend_alpha 0.65 --output_path outputs/submission_blend_065.csv
+```
+
+The final prediction is:
+
+```text
+final_pred = alpha * catboost_pred + (1 - alpha) * baseline_pred
+```
+
+Choose `alpha` using future-window validation, not random KFold:
+
+```bash
+python main.py --run_future_validation --quick --no_day_shift --blend_baseline --alpha_search
+```
+
+## Hour Calibration
+
+Hour calibration learns conservative correction ratios from fake future-window validation.
+
+It clips raw hour ratios between `0.85` and `1.15`, then applies only 35% of the correction:
+
+```text
+smooth_ratio = 1.0 + 0.35 * (clipped_ratio - 1.0)
+```
+
+Run:
+
+```bash
+python main.py --iterations 1500 --no_day_shift --blend_baseline --blend_alpha 0.65 --hour_calibration --output_path outputs/submission_blend_hour_calibrated.csv
+```
 
 ## Submission Format
 
@@ -188,8 +311,14 @@ traffic_demand_prediction/
 │   ├── features.py
 │   ├── train.py
 │   ├── predict.py
+│   ├── statistical_baseline.py
+│   ├── future_window_validation.py
+│   ├── calibration.py
+│   ├── error_analysis.py
 │   └── validate_submission.py
 ├── main.py
+├── future_window_validation.py
+├── run_experiments.py
 ├── requirements.txt
 └── README.md
 ```
